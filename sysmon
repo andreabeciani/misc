@@ -1,0 +1,110 @@
+#!/bin/bash
+
+MAILADDRESS="test@gmail.com"
+
+MAXDEV=48 #50
+MAXCPU=94 #98
+WRNCPU=93
+DFLIM1=700000
+DFLIM2=200000
+DFLIM3=100000
+BTLIM=15
+
+CCONF="$HOME/.conky_console"
+BATDEV="/org/freedesktop/UPower/devices/battery_BAT0"
+ROOTDEV=dm-2
+
+BATPER=`upower -i $BATDEV | grep percentage | awk '{ print $2 }' | sed 's/%//'`
+BATSTATE=`upower -i $BATDEV | grep state | awk '{ print $2 }'`
+HDTEMP=`netcat localhost 7634`
+HWMON=`conky -c $CCONF -i1`
+
+DFROOT=`df | grep $ROOTDEV | awk '{ print $4 }'`
+DFROOT_H=`df -h | grep $ROOTDEV | awk '{ print $4 }'`
+
+DEV=`echo $HDTEMP | awk -F"|" '{ print $2 }'`
+DEVNAME=`echo $HDTEMP | awk -F"|" '{ print $3 }'`
+DEVTEMP=`echo $HDTEMP | awk -F"|" '{ print $4 }'`
+DEVUNIT=`echo $HDTEMP | awk -F"|" '{ print $5 }'`
+CPUTEMP=`echo $HWMON | awk -F";" '{ print $2 }'`
+
+notify_all_soft(){
+    DATE=`date +%Y%m%d-%H%M`
+    echo "$DATE: $1"
+    $XMPP "hwmon: $DATE - $1"
+    notify-send "$1"
+    echo "$1" | /usr/bin/mutt -n -s "$DATE - $1" -e "set from=$MAILADDRESS" $MAILADDRESS
+}
+
+notify_all(){
+    DATE=`date +%Y%m%d-%H%M`
+    echo "$DATE: $1"
+    $XMPP "hwmon: $DATE - $1"
+    notify-send --urgency=critical "$1"
+    echo "$1" | /usr/bin/mutt -n -s "$DATE - $1" -e "set from=$MAILADDRESS" $MAILADDRESS
+}
+
+
+if [ $CPUTEMP -gt $WRNCPU ]
+then
+    ALARM="CPU MAYBE BURN!!! $CPUTEMP°C"
+    notify_all_soft "$ALARM"
+    echo
+fi
+
+if [ $CPUTEMP -gt $MAXCPU ]
+then
+    ALARM="WARNING!!! CPU BURN!!! $CPUTEMP°C"
+    notify_all "$ALARM"
+    sudo pm-suspend
+    echo
+fi
+
+if [ $DEVTEMP -gt $MAXDEV ]
+then
+    ALARM="WARNING!!! HD BURN!!! $DEVTEMP°C"
+    notify_all "$ALARM"
+    sudo pm-suspend
+    echo
+fi
+
+if [ $DFROOT -lt $DFLIM1 ] 
+then
+    ps aux > /tmp/sysmon
+    if cat /tmp/sysmon | grep $DWAPP
+    then
+	ALARM="root is almoust full!!! $DFROOT KiB remain - kill - $DWAPP"
+	notify_all "$ALARM"
+	killall $DWAPP
+    fi
+fi
+
+if [ $DFROOT -lt $DFLIM2 ]
+then
+    if [ ! -e ~/WARNING-sysmon-suspend ]
+    then
+	ALARM="WARNING!!! root is full!!! $DFROOT KiB remain - suspend system - remember remove file ~/WARNING-sysmon-suspend"
+	notify_all "$ALARM"
+	touch ~/WARNING-sysmon-suspend
+	sudo pm-suspend
+	echo	
+    fi
+fi
+
+if [ $DFROOT -lt $DFLIM3 ]
+then
+    ALARM="WARNING!!! root is full!!! $DFROOT KiB remain"
+    notify_all "$ALARM"
+fi
+
+
+if [ $BATPER -lt $BTLIM ] 
+then
+    if [ $BATSTATE != 'charging' ]
+    then
+	ALARM="WARNING!!! battery descharged!!! $BATPER%"
+	notify_all "$ALARM"
+	sudo pm-hibernate
+	echo
+    fi
+fi

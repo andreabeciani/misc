@@ -1,0 +1,8 @@
+out_to_x no
+out_to_console yes
+total_run_times 1
+
+TEXT
+HWMON-0-1;${hwmon 0 temp 1};
+DFROOT;${fs_free /};
+DFSHARE1;${fs_free /mnt/share};
